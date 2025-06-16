@@ -370,7 +370,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
                                 height: 16,
                                 child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Icon(MdiIcons.networkOutline),
+                            : Icon(MdiIcons.networkOutline),
                         label: Text(networkDiagnosticService.isRunning 
                             ? 'Running...' 
                             : 'Run Network Diagnostics'),
