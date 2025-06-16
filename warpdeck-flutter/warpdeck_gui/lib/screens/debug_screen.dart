@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'dart:convert';
 
 import '../services/debug_service.dart';
 import '../services/warpdeck_service.dart';
@@ -425,6 +426,8 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
                       ),
                       const SizedBox(height: 8),
                       _buildDiagnosticSummary(networkDiagnosticService.lastDiagnostics),
+                      const SizedBox(height: 16),
+                      _buildDiagnosticDetails(networkDiagnosticService.lastDiagnostics),
                     ],
                   ),
                 ),
@@ -733,6 +736,123 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDiagnosticDetails(Map<String, dynamic> diagnostics) {
+    final jsonEncoder = const JsonEncoder.withIndent('  ');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDetailExpansionTile(
+          title: 'Network Interfaces',
+          icon: MdiIcons.ipNetworkOutline,
+          children: (diagnostics['network_interfaces'] as List<dynamic>? ?? [])
+              .map((e) => _buildJsonCard(jsonEncoder.convert(e)))
+              .toList(),
+        ),
+        if (diagnostics.containsKey('mdns_status'))
+          _buildDetailExpansionTile(
+            title: 'mDNS Status',
+            icon: MdiIcons.dns,
+            initiallyExpanded: true,
+            children: [
+              _buildJsonCard(jsonEncoder.convert(
+                  (diagnostics['mdns_status']
+                      as Map<String, dynamic>)['discovery_status'] ??
+                      {})),
+            ],
+          ),
+        if (diagnostics.containsKey('mdns_status') &&
+            (diagnostics['mdns_status'] as Map<String, dynamic>)
+                .containsKey('discovered_peers'))
+          _buildDetailExpansionTile(
+            title: 'Discovered Peers',
+            icon: MdiIcons.accountMultipleOutline,
+            initiallyExpanded: true,
+            children: [
+              _buildJsonCard(jsonEncoder.convert(
+                  (diagnostics['mdns_status']
+                      as Map<String, dynamic>)['discovered_peers'] ??
+                      {})),
+            ],
+          ),
+        if (diagnostics.containsKey('mdns_status') &&
+            (diagnostics['mdns_status'] as Map<String, dynamic>)
+                .containsKey('mdns_debug_info'))
+          _buildDetailExpansionTile(
+            title: 'mDNS Debug Info',
+            icon: MdiIcons.bug,
+            children: [
+              _buildTextCard((diagnostics['mdns_status']
+                  as Map<String, dynamic>)['mdns_debug_info'] as String),
+            ],
+          ),
+        if (diagnostics.containsKey('firewall_info'))
+          _buildDetailExpansionTile(
+            title: 'Firewall Info',
+            icon: MdiIcons.fire,
+            children: [
+              _buildJsonCard(jsonEncoder.convert(diagnostics['firewall_info'])),
+            ],
+          ),
+        if (diagnostics.containsKey('port_tests'))
+          _buildDetailExpansionTile(
+            title: 'Port Tests',
+            icon: MdiIcons.lanConnect,
+            children: [
+              _buildJsonCard(jsonEncoder.convert(diagnostics['port_tests'])),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDetailExpansionTile({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+    bool initiallyExpanded = false,
+  }) {
+    return ExpansionTile(
+      title: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 8),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+      initiallyExpanded: initiallyExpanded,
+      children: children,
+    );
+  }
+
+  Widget _buildJsonCard(String jsonString) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: SelectableText(
+          jsonString,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextCard(String text) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      elevation: 1,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: SelectableText(
+          text,
+          style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+        ),
       ),
     );
   }
