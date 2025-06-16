@@ -193,6 +193,64 @@ bool MdnsManager::is_discovering() const {
     return is_discovering_.load();
 }
 
+std::map<std::string, PeerInfo> MdnsManager::get_discovered_peers() const {
+    std::lock_guard<std::mutex> lock(peers_mutex_);
+    std::map<std::string, PeerInfo> result;
+    for (const auto& [device_id, discovered_peer] : discovered_peers_) {
+        result[device_id] = discovered_peer.info;
+    }
+    return result;
+}
+
+std::string MdnsManager::get_debug_info() const {
+    std::ostringstream debug_info;
+    
+    debug_info << "MdnsManager Debug Information:\n";
+    debug_info << "  Publishing: " << (is_publishing_.load() ? "Yes" : "No") << "\n";
+    debug_info << "  Discovering: " << (is_discovering_.load() ? "Yes" : "No") << "\n";
+    debug_info << "  Network Thread Running: " << (network_thread_.joinable() && !should_stop_.load() ? "Yes" : "No") << "\n";
+    
+    // Socket information
+    {
+        std::lock_guard<std::mutex> lock(sockets_mutex_);
+        debug_info << "  Active Sockets: " << sockets_.size() << "\n";
+        for (size_t i = 0; i < sockets_.size(); ++i) {
+            debug_info << "    Socket " << i << ": " << sockets_[i] << "\n";
+        }
+    }
+    
+    // Service information
+    if (is_publishing_.load()) {
+        std::lock_guard<std::mutex> lock(service_mutex_);
+        debug_info << "  Published Service:\n";
+        debug_info << "    Device ID: " << service_info_.device_id << "\n";
+        debug_info << "    Port: " << service_info_.port << "\n";
+        debug_info << "    Fingerprint: " << service_info_.fingerprint.substr(0, 16) << "...\n";
+    }
+    
+    // Discovered peers
+    {
+        std::lock_guard<std::mutex> lock(peers_mutex_);
+        debug_info << "  Discovered Peers: " << discovered_peers_.size() << "\n";
+        for (const auto& [device_id, discovered_peer] : discovered_peers_) {
+            auto age = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - discovered_peer.last_seen);
+            debug_info << "    " << device_id << " (" << discovered_peer.info.name 
+                      << ") - Last seen: " << age.count() << "s ago\n";
+        }
+    }
+    
+    // Network interfaces
+    debug_info << "  Local Hostname: " << get_local_hostname() << "\n";
+    auto addresses = get_local_addresses();
+    debug_info << "  Local Addresses: " << addresses.size() << "\n";
+    for (const auto& addr : addresses) {
+        debug_info << "    " << addr << "\n";
+    }
+    
+    return debug_info.str();
+}
+
 void MdnsManager::network_thread_main() {
     Logger::instance().info("MdnsManager", "mDNS network thread started");
     
@@ -580,7 +638,7 @@ void MdnsManager::send_service_response(int sock, const struct sockaddr* to, siz
     }
 }
 
-std::string MdnsManager::get_local_hostname() {
+std::string MdnsManager::get_local_hostname() const {
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
         return std::string(hostname);
@@ -588,7 +646,7 @@ std::string MdnsManager::get_local_hostname() {
     return "warpdeck-host";
 }
 
-std::vector<std::string> MdnsManager::get_local_addresses() {
+std::vector<std::string> MdnsManager::get_local_addresses() const {
     std::vector<std::string> addresses;
     
 #ifdef _WIN32

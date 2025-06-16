@@ -18,7 +18,10 @@ final debugServiceProvider = ChangeNotifierProvider<DebugService>((ref) {
 });
 
 final networkDiagnosticServiceProvider = ChangeNotifierProvider<NetworkDiagnosticService>((ref) {
-  return NetworkDiagnosticService();
+  final service = NetworkDiagnosticService();
+  final warpDeckState = ref.watch(warpDeckServiceProvider);
+  service.setWarpDeckService(ref.read(warpDeckServiceProvider.notifier));
+  return service;
 });
 
 class DebugScreen extends ConsumerStatefulWidget {
@@ -630,29 +633,62 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
       ));
     }
     
-    // Platform-specific status
-    if (diagnostics.containsKey('avahi_status')) {
-      final avahiStatus = diagnostics['avahi_status'] as Map;
-      final daemonStatus = avahiStatus['daemon_status'] as Map?;
-      final isActive = daemonStatus?['is_active'] ?? false;
-      summaryItems.add(_buildSummaryItem(
-        'Avahi Daemon',
-        isActive ? 'Running' : 'Not running',
-        isActive ? Icons.check_circle : Icons.error,
-        isActive ? Colors.green : Colors.red,
-      ));
-    }
-    
-    if (diagnostics.containsKey('bonjour_status')) {
-      final bonjourStatus = diagnostics['bonjour_status'] as Map;
-      final mdnsResponder = bonjourStatus['mdns_responder'] as Map?;
-      final isRunning = mdnsResponder?['is_running'] ?? false;
-      summaryItems.add(_buildSummaryItem(
-        'Bonjour Service',
-        isRunning ? 'Running' : 'Not running',
-        isRunning ? Icons.check_circle : Icons.error,
-        isRunning ? Colors.green : Colors.red,
-      ));
+    // mDNS Manager status
+    if (diagnostics.containsKey('mdns_status')) {
+      final mdnsStatus = diagnostics['mdns_status'] as Map;
+      final discoveryStatus = mdnsStatus['discovery_status'] as Map?;
+      
+      if (discoveryStatus != null) {
+        final isPublishing = discoveryStatus['publishing'] == true;
+        final isDiscovering = discoveryStatus['discovering'] == true;
+        final isStarted = discoveryStatus['started'] == true;
+        
+        // Overall mDNS status
+        final isHealthy = isStarted && isPublishing && isDiscovering;
+        summaryItems.add(_buildSummaryItem(
+          'mDNS Service',
+          isHealthy ? 'Healthy' : 'Issues detected',
+          isHealthy ? Icons.check_circle : Icons.warning,
+          isHealthy ? Colors.green : Colors.orange,
+        ));
+        
+        // Publishing status
+        summaryItems.add(_buildSummaryItem(
+          'Service Publishing',
+          isPublishing ? 'Active' : 'Inactive',
+          isPublishing ? Icons.broadcast_on_personal : Icons.broadcast_on_personal,
+          isPublishing ? Colors.green : Colors.red,
+        ));
+        
+        // Discovery status
+        summaryItems.add(_buildSummaryItem(
+          'Peer Discovery',
+          isDiscovering ? 'Active' : 'Inactive',
+          isDiscovering ? Icons.search : Icons.search_off,
+          isDiscovering ? Colors.green : Colors.red,
+        ));
+        
+        // Peer count
+        final discoveredPeers = mdnsStatus['discovered_peers'] as Map?;
+        if (discoveredPeers != null) {
+          final peerCount = discoveredPeers['peer_count'] ?? 0;
+          summaryItems.add(_buildSummaryItem(
+            'Discovered Peers',
+            '$peerCount peer${peerCount == 1 ? '' : 's'}',
+            peerCount > 0 ? Icons.devices : Icons.devices_other,
+            peerCount > 0 ? Colors.blue : Colors.grey,
+          ));
+        }
+      }
+      
+      if (mdnsStatus.containsKey('error')) {
+        summaryItems.add(_buildSummaryItem(
+          'mDNS Error',
+          'Failed to get status',
+          Icons.error,
+          Colors.red,
+        ));
+      }
     }
     
     // Port availability

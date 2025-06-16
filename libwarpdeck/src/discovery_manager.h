@@ -40,6 +40,9 @@ public:
     
     void set_peer_discovered_callback(PeerDiscoveredCallback callback);
     void set_peer_lost_callback(PeerLostCallback callback);
+    
+    // Debug access
+    const MdnsManager* get_mdns_manager() const;
 
 private:
     std::unique_ptr<MdnsManager> mdns_manager_;

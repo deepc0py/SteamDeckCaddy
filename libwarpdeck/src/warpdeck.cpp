@@ -1,5 +1,6 @@
 #include "warpdeck.h"
 #include "discovery_manager.h"
+#include "mdns_manager.h"
 #include "api_server.h"
 #include "api_client.h"
 #include "security_manager.h"
@@ -333,6 +334,90 @@ void warpdeck_remove_trusted_device(WarpDeckHandle* handle, const char* device_i
         handle->security_manager->remove_trusted_peer(device_id);
     } catch (const std::exception& e) {
         safe_call_callback(handle->callbacks.on_error, e.what());
+    }
+}
+
+const char* warpdeck_get_discovery_status(WarpDeckHandle* handle) {
+    if (!handle || !handle->discovery_manager) {
+        return nullptr;
+    }
+    
+    try {
+        const MdnsManager* mdns_manager = handle->discovery_manager->get_mdns_manager();
+        if (!mdns_manager) {
+            return copy_string("{\"error\": \"MdnsManager not available\"}");
+        }
+        
+        std::ostringstream status_json;
+        status_json << "{"
+                   << "\"publishing\": " << (mdns_manager->is_publishing() ? "true" : "false") << ","
+                   << "\"discovering\": " << (mdns_manager->is_discovering() ? "true" : "false") << ","
+                   << "\"started\": " << (handle->started ? "true" : "false") << ","
+                   << "\"device_id\": \"" << handle->device_id << "\","
+                   << "\"device_name\": \"" << handle->device_name << "\","
+                   << "\"current_port\": " << handle->current_port
+                   << "}";
+        
+        return copy_string(status_json.str());
+    } catch (const std::exception& e) {
+        safe_call_callback(handle->callbacks.on_error, e.what());
+        return nullptr;
+    }
+}
+
+const char* warpdeck_get_discovered_peers(WarpDeckHandle* handle) {
+    if (!handle || !handle->discovery_manager) {
+        return nullptr;
+    }
+    
+    try {
+        auto peers = handle->discovery_manager->get_discovered_peers();
+        
+        std::ostringstream peers_json;
+        peers_json << "{"
+                  << "\"peer_count\": " << peers.size() << ","
+                  << "\"peers\": [";
+        
+        bool first = true;
+        for (const auto& [device_id, peer] : peers) {
+            if (!first) peers_json << ",";
+            first = false;
+            
+            peers_json << "{"
+                      << "\"id\": \"" << peer.id << "\","
+                      << "\"name\": \"" << peer.name << "\","
+                      << "\"platform\": \"" << peer.platform << "\","
+                      << "\"host_address\": \"" << peer.host_address << "\","
+                      << "\"port\": " << peer.port << ","
+                      << "\"fingerprint\": \"" << peer.fingerprint.substr(0, 16) << "...\""
+                      << "}";
+        }
+        
+        peers_json << "]}";
+        
+        return copy_string(peers_json.str());
+    } catch (const std::exception& e) {
+        safe_call_callback(handle->callbacks.on_error, e.what());
+        return nullptr;
+    }
+}
+
+const char* warpdeck_get_mdns_debug_info(WarpDeckHandle* handle) {
+    if (!handle || !handle->discovery_manager) {
+        return nullptr;
+    }
+    
+    try {
+        const MdnsManager* mdns_manager = handle->discovery_manager->get_mdns_manager();
+        if (!mdns_manager) {
+            return copy_string("MdnsManager not available");
+        }
+        
+        std::string debug_info = mdns_manager->get_debug_info();
+        return copy_string(debug_info);
+    } catch (const std::exception& e) {
+        safe_call_callback(handle->callbacks.on_error, e.what());
+        return nullptr;
     }
 }
 

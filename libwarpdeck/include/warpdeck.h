@@ -41,6 +41,11 @@ void warpdeck_cancel_transfer(WarpDeckHandle* handle, const char* transfer_id);
 const char* warpdeck_get_trusted_devices(WarpDeckHandle* handle);
 void warpdeck_remove_trusted_device(WarpDeckHandle* handle, const char* device_id);
 
+// Debug and diagnostic functions
+const char* warpdeck_get_discovery_status(WarpDeckHandle* handle);
+const char* warpdeck_get_discovered_peers(WarpDeckHandle* handle);
+const char* warpdeck_get_mdns_debug_info(WarpDeckHandle* handle);
+
 // Utility function to free strings returned by the library
 void warpdeck_free_string(const char* str);
 

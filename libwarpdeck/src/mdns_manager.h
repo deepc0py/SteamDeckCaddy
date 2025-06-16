@@ -52,6 +52,10 @@ public:
     bool is_publishing() const;
     bool is_discovering() const;
     
+    // Debug information
+    std::map<std::string, PeerInfo> get_discovered_peers() const;
+    std::string get_debug_info() const;
+    
 private:
     struct ServiceInfo {
         std::string device_id;
@@ -75,7 +79,7 @@ private:
     // Publishing state
     std::atomic<bool> is_publishing_;
     ServiceInfo service_info_;
-    std::mutex service_mutex_;
+    mutable std::mutex service_mutex_;
     
     // Discovery state
     std::atomic<bool> is_discovering_;
@@ -89,7 +93,7 @@ private:
     
     // Socket management
     std::vector<int> sockets_;
-    std::mutex sockets_mutex_;
+    mutable std::mutex sockets_mutex_;
     
     // Core methods
     void network_thread_main();
@@ -109,8 +113,8 @@ private:
     void process_peer_timeout();
     
     // Utility methods
-    std::string get_local_hostname();
-    std::vector<std::string> get_local_addresses();
+    std::string get_local_hostname() const;
+    std::vector<std::string> get_local_addresses() const;
     static std::string sockaddr_to_string(const struct sockaddr* addr);
     
     // mDNS callback helpers

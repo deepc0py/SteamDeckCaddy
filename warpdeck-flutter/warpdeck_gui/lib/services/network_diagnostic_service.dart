@@ -2,13 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'warpdeck_service.dart';
 
 class NetworkDiagnosticService extends ChangeNotifier {
   Map<String, dynamic> _lastDiagnostics = {};
   bool _isRunning = false;
+  WarpDeckService? _warpDeckService;
   
   Map<String, dynamic> get lastDiagnostics => Map.unmodifiable(_lastDiagnostics);
   bool get isRunning => _isRunning;
+  
+  void setWarpDeckService(WarpDeckService service) {
+    _warpDeckService = service;
+  }
 
   Future<Map<String, dynamic>> runFullDiagnostics() async {
     if (_isRunning) return _lastDiagnostics;
@@ -25,21 +31,11 @@ class NetworkDiagnosticService extends ChangeNotifier {
       // Network interfaces
       diagnostics['network_interfaces'] = await _getNetworkInterfaces();
       
-      // mDNS service check
-      diagnostics['mdns_services'] = await _checkMdnsServices();
+      // mDNS service check (unified MdnsManager)
+      diagnostics['mdns_status'] = await _checkMdnsManagerStatus();
       
       // Firewall status (platform-specific)
       diagnostics['firewall_info'] = await _getFirewallInfo();
-      
-      // Avahi daemon status (Linux only)
-      if (Platform.isLinux) {
-        diagnostics['avahi_status'] = await _checkAvahiDaemon();
-      }
-      
-      // Bonjour status (macOS only)
-      if (Platform.isMacOS) {
-        diagnostics['bonjour_status'] = await _checkBonjourService();
-      }
       
       // Port connectivity tests
       diagnostics['port_tests'] = await _testPortConnectivity();
@@ -79,29 +75,41 @@ class NetworkDiagnosticService extends ChangeNotifier {
     return interfaces;
   }
 
-  Future<Map<String, dynamic>> _checkMdnsServices() async {
+  Future<Map<String, dynamic>> _checkMdnsManagerStatus() async {
     final result = <String, dynamic>{};
     
     try {
-      if (Platform.isMacOS) {
-        // Check for DNS-SD services using dns-sd command
-        final dnssdResult = await Process.run('dns-sd', ['-B', '_warpdeck._tcp']).timeout(const Duration(seconds: 5));
-        result['dns_sd_browse'] = {
-          'exit_code': dnssdResult.exitCode,
-          'stdout': dnssdResult.stdout,
-          'stderr': dnssdResult.stderr,
-        };
-      } else if (Platform.isLinux) {
-        // Check for Avahi services using avahi-browse
-        final avahiResult = await Process.run('avahi-browse', ['-t', '_warpdeck._tcp']).timeout(const Duration(seconds: 5));
-        result['avahi_browse'] = {
-          'exit_code': avahiResult.exitCode,
-          'stdout': avahiResult.stdout,
-          'stderr': avahiResult.stderr,
-        };
+      if (_warpDeckService == null) {
+        result['error'] = 'WarpDeck service not available';
+        return result;
       }
+      
+      // Get discovery status
+      final discoveryStatus = _warpDeckService!.getDiscoveryStatus();
+      if (discoveryStatus != null) {
+        result['discovery_status'] = discoveryStatus;
+      } else {
+        result['discovery_error'] = 'Failed to get discovery status';
+      }
+      
+      // Get discovered peers info
+      final peersInfo = _warpDeckService!.getDiscoveredPeersDebugInfo();
+      if (peersInfo != null) {
+        result['discovered_peers'] = peersInfo;
+      } else {
+        result['peers_error'] = 'Failed to get discovered peers info';
+      }
+      
+      // Get detailed mDNS debug info
+      final mdnsDebugInfo = _warpDeckService!.getMdnsDebugInfo();
+      if (mdnsDebugInfo != null) {
+        result['mdns_debug_info'] = mdnsDebugInfo;
+      } else {
+        result['mdns_debug_error'] = 'Failed to get mDNS debug info';
+      }
+      
     } catch (e) {
-      result['error'] = 'Failed to check mDNS services: $e';
+      result['error'] = 'Failed to check MdnsManager status: $e';
     }
     
     return result;
@@ -147,59 +155,6 @@ class NetworkDiagnosticService extends ChangeNotifier {
     return result;
   }
 
-  Future<Map<String, dynamic>> _checkAvahiDaemon() async {
-    final result = <String, dynamic>{};
-    
-    try {
-      // Check if avahi-daemon is running
-      final statusResult = await Process.run('systemctl', ['is-active', 'avahi-daemon']).timeout(const Duration(seconds: 3));
-      result['daemon_status'] = {
-        'exit_code': statusResult.exitCode,
-        'output': statusResult.stdout.trim(),
-        'is_active': statusResult.stdout.trim() == 'active',
-      };
-      
-      // Check avahi-daemon configuration
-      final configFile = File('/etc/avahi/avahi-daemon.conf');
-      if (await configFile.exists()) {
-        result['config'] = await configFile.readAsString();
-      } else {
-        result['config_error'] = 'Configuration file not found';
-      }
-      
-      // Check if avahi-browse is available
-      final browseResult = await Process.run('which', ['avahi-browse']).timeout(const Duration(seconds: 3));
-      result['browse_tool_available'] = browseResult.exitCode == 0;
-      
-    } catch (e) {
-      result['error'] = 'Failed to check Avahi daemon: $e';
-    }
-    
-    return result;
-  }
-
-  Future<Map<String, dynamic>> _checkBonjourService() async {
-    final result = <String, dynamic>{};
-    
-    try {
-      // Check if mDNSResponder is running
-      final launchctlResult = await Process.run('launchctl', ['list', 'com.apple.mDNSResponder']).timeout(const Duration(seconds: 3));
-      result['mdns_responder'] = {
-        'exit_code': launchctlResult.exitCode,
-        'output': launchctlResult.stdout,
-        'is_running': launchctlResult.exitCode == 0,
-      };
-      
-      // Check if dns-sd tool is available
-      final dnsSdResult = await Process.run('which', ['dns-sd']).timeout(const Duration(seconds: 3));
-      result['dns_sd_tool_available'] = dnsSdResult.exitCode == 0;
-      
-    } catch (e) {
-      result['error'] = 'Failed to check Bonjour service: $e';
-    }
-    
-    return result;
-  }
 
   Future<Map<String, dynamic>> _testPortConnectivity() async {
     final result = <String, dynamic>{};
@@ -246,43 +201,48 @@ class NetworkDiagnosticService extends ChangeNotifier {
       buffer.writeln();
     }
     
-    // mDNS services
-    final mdnsServices = _lastDiagnostics['mdns_services'] as Map?;
-    if (mdnsServices != null) {
-      buffer.writeln('MDNS SERVICES:');
-      for (final entry in mdnsServices.entries) {
-        buffer.writeln('  ${entry.key}: ${entry.value}');
+    // mDNS Manager Status
+    final mdnsStatus = _lastDiagnostics['mdns_status'] as Map?;
+    if (mdnsStatus != null) {
+      buffer.writeln('MDNS MANAGER STATUS:');
+      
+      final discoveryStatus = mdnsStatus['discovery_status'] as Map?;
+      if (discoveryStatus != null) {
+        buffer.writeln('  Publishing: ${discoveryStatus['publishing']}');
+        buffer.writeln('  Discovering: ${discoveryStatus['discovering']}');
+        buffer.writeln('  Started: ${discoveryStatus['started']}');
+        buffer.writeln('  Device ID: ${discoveryStatus['device_id']}');
+        buffer.writeln('  Device Name: ${discoveryStatus['device_name']}');
+        buffer.writeln('  Current Port: ${discoveryStatus['current_port']}');
       }
+      
+      final discoveredPeers = mdnsStatus['discovered_peers'] as Map?;
+      if (discoveredPeers != null) {
+        buffer.writeln('  Discovered Peers: ${discoveredPeers['peer_count']}');
+        final peers = discoveredPeers['peers'] as List?;
+        if (peers != null) {
+          for (final peer in peers) {
+            buffer.writeln('    ${peer['name']} (${peer['id']}) - ${peer['host_address']}:${peer['port']}');
+          }
+        }
+      }
+      
+      final mdnsDebugInfo = mdnsStatus['mdns_debug_info'] as String?;
+      if (mdnsDebugInfo != null) {
+        buffer.writeln('  Debug Info:');
+        final lines = mdnsDebugInfo.split('\n');
+        for (final line in lines) {
+          buffer.writeln('    $line');
+        }
+      }
+      
+      if (mdnsStatus.containsKey('error')) {
+        buffer.writeln('  Error: ${mdnsStatus['error']}');
+      }
+      
       buffer.writeln();
     }
     
-    // Platform-specific information
-    if (Platform.isLinux) {
-      final avahiStatus = _lastDiagnostics['avahi_status'] as Map?;
-      if (avahiStatus != null) {
-        buffer.writeln('AVAHI DAEMON STATUS:');
-        final daemonStatus = avahiStatus['daemon_status'] as Map?;
-        if (daemonStatus != null) {
-          buffer.writeln('  Status: ${daemonStatus['output']}');
-          buffer.writeln('  Active: ${daemonStatus['is_active']}');
-        }
-        buffer.writeln('  Browse tool available: ${avahiStatus['browse_tool_available']}');
-        buffer.writeln();
-      }
-    }
-    
-    if (Platform.isMacOS) {
-      final bonjourStatus = _lastDiagnostics['bonjour_status'] as Map?;
-      if (bonjourStatus != null) {
-        buffer.writeln('BONJOUR SERVICE STATUS:');
-        final mdnsResponder = bonjourStatus['mdns_responder'] as Map?;
-        if (mdnsResponder != null) {
-          buffer.writeln('  mDNSResponder running: ${mdnsResponder['is_running']}');
-        }
-        buffer.writeln('  dns-sd tool available: ${bonjourStatus['dns_sd_tool_available']}');
-        buffer.writeln();
-      }
-    }
     
     // Port tests
     final portTests = _lastDiagnostics['port_tests'] as Map?;
