@@ -167,7 +167,7 @@ jobs:
 
     - name: Install C++ dependencies
       run: |
-        $env:VCPKG_ROOT\vcpkg.exe install boost-asio openssl nlohmann-json
+        & "$env:VCPKG_ROOT\vcpkg.exe" install boost-asio openssl nlohmann-json
 
     - name: Build libwarpdeck
       run: |
@@ -175,7 +175,7 @@ jobs:
         if (Test-Path build) { Remove-Item -Recurse -Force build }
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" ..
+        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
         cmake --build . --config Release
         cd ..\..
 
@@ -185,7 +185,7 @@ jobs:
         if (Test-Path build) { Remove-Item -Recurse -Force build }
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" ..
+        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
         cmake --build . --config Release
         cd ..\..
 
