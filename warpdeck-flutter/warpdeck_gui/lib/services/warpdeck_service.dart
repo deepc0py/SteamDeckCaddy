@@ -131,6 +131,13 @@ class WarpDeckService extends StateNotifier<WarpDeckState> {
     }
   }
 
+  Future<void> restart() async {
+    if (_handle == nullptr) return;
+    final port = state.currentPort ?? 0;
+    await stop();
+    await start(port: port);
+  }
+
   Future<void> stop() async {
     if (_handle != nullptr && _isStarted) {
       WarpDeckFFI.instance.warpdeckStop(_handle!);
