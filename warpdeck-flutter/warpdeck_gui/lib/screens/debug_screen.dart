@@ -60,6 +60,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
 
     final debugService = ref.watch(debugServiceProvider);
     final networkDiagnosticService = ref.watch(networkDiagnosticServiceProvider);
+    final warpdeckService = ref.read(warpDeckServiceProvider.notifier);
     final connectivity = debugService.connectivityInfo;
 
     return Scaffold(
@@ -215,6 +216,33 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
                         }
                       },
                       networkDiagnosticService.isRunning,
+                    ),
+                    _buildActionButton(
+                      'Restart Service',
+                      MdiIcons.restart,
+                      () async {
+                        try {
+                          await warpdeckService.restart();
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Service restarted successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to restart service: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      false, // No loading indicator for now
                     ),
                   ],
                 ),
