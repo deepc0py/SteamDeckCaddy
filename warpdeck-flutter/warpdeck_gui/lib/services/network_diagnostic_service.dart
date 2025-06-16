@@ -85,7 +85,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
     try {
       if (Platform.isMacOS) {
         // Check for DNS-SD services using dns-sd command
-        final dnssdResult = await Process.run('dns-sd', ['-B', '_warpdeck._tcp'], timeout: const Duration(seconds: 5));
+        final dnssdResult = await Process.run('dns-sd', ['-B', '_warpdeck._tcp']).timeout(const Duration(seconds: 5));
         result['dns_sd_browse'] = {
           'exit_code': dnssdResult.exitCode,
           'stdout': dnssdResult.stdout,
@@ -93,7 +93,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
         };
       } else if (Platform.isLinux) {
         // Check for Avahi services using avahi-browse
-        final avahiResult = await Process.run('avahi-browse', ['-t', '_warpdeck._tcp'], timeout: const Duration(seconds: 5));
+        final avahiResult = await Process.run('avahi-browse', ['-t', '_warpdeck._tcp']).timeout(const Duration(seconds: 5));
         result['avahi_browse'] = {
           'exit_code': avahiResult.exitCode,
           'stdout': avahiResult.stdout,
@@ -113,28 +113,28 @@ class NetworkDiagnosticService extends ChangeNotifier {
     try {
       if (Platform.isMacOS) {
         // Check macOS firewall status
-        final pfctlResult = await Process.run('pfctl', ['-s', 'info'], timeout: const Duration(seconds: 3));
+        final pfctlResult = await Process.run('pfctl', ['-s', 'info']).timeout(const Duration(seconds: 3));
         result['pfctl_status'] = {
           'exit_code': pfctlResult.exitCode,
           'output': pfctlResult.stdout,
         };
         
         // Check application firewall
-        final socketfilterfwResult = await Process.run('/usr/libexec/ApplicationFirewall/socketfilterfw', ['--getglobalstate'], timeout: const Duration(seconds: 3));
+        final socketfilterfwResult = await Process.run('/usr/libexec/ApplicationFirewall/socketfilterfw', ['--getglobalstate']).timeout(const Duration(seconds: 3));
         result['app_firewall'] = {
           'exit_code': socketfilterfwResult.exitCode,
           'output': socketfilterfwResult.stdout,
         };
       } else if (Platform.isLinux) {
         // Check iptables
-        final iptablesResult = await Process.run('iptables', ['-L', '-n'], timeout: const Duration(seconds: 3));
+        final iptablesResult = await Process.run('iptables', ['-L', '-n']).timeout(const Duration(seconds: 3));
         result['iptables'] = {
           'exit_code': iptablesResult.exitCode,
           'output': iptablesResult.stdout,
         };
         
         // Check ufw status
-        final ufwResult = await Process.run('ufw', ['status'], timeout: const Duration(seconds: 3));
+        final ufwResult = await Process.run('ufw', ['status']).timeout(const Duration(seconds: 3));
         result['ufw'] = {
           'exit_code': ufwResult.exitCode,
           'output': ufwResult.stdout,
@@ -152,7 +152,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
     
     try {
       // Check if avahi-daemon is running
-      final statusResult = await Process.run('systemctl', ['is-active', 'avahi-daemon'], timeout: const Duration(seconds: 3));
+      final statusResult = await Process.run('systemctl', ['is-active', 'avahi-daemon']).timeout(const Duration(seconds: 3));
       result['daemon_status'] = {
         'exit_code': statusResult.exitCode,
         'output': statusResult.stdout.trim(),
@@ -168,7 +168,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
       }
       
       // Check if avahi-browse is available
-      final browseResult = await Process.run('which', ['avahi-browse'], timeout: const Duration(seconds: 3));
+      final browseResult = await Process.run('which', ['avahi-browse']).timeout(const Duration(seconds: 3));
       result['browse_tool_available'] = browseResult.exitCode == 0;
       
     } catch (e) {
@@ -183,7 +183,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
     
     try {
       // Check if mDNSResponder is running
-      final launchctlResult = await Process.run('launchctl', ['list', 'com.apple.mDNSResponder'], timeout: const Duration(seconds: 3));
+      final launchctlResult = await Process.run('launchctl', ['list', 'com.apple.mDNSResponder']).timeout(const Duration(seconds: 3));
       result['mdns_responder'] = {
         'exit_code': launchctlResult.exitCode,
         'output': launchctlResult.stdout,
@@ -191,7 +191,7 @@ class NetworkDiagnosticService extends ChangeNotifier {
       };
       
       // Check if dns-sd tool is available
-      final dnsSdResult = await Process.run('which', ['dns-sd'], timeout: const Duration(seconds: 3));
+      final dnsSdResult = await Process.run('which', ['dns-sd']).timeout(const Duration(seconds: 3));
       result['dns_sd_tool_available'] = dnsSdResult.exitCode == 0;
       
     } catch (e) {
