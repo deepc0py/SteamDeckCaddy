@@ -21,22 +21,19 @@ find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 
-# Platform-specific dependencies
-if(WARPDECK_PLATFORM_MACOS)
-    find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
-    find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
-    set(PLATFORM_LIBRARIES ${CORE_FOUNDATION_FRAMEWORK} ${FOUNDATION_FRAMEWORK})
-    set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_MACOS)
-elseif(WARPDECK_PLATFORM_LINUX)
-    pkg_check_modules(AVAHI REQUIRED avahi-client)
-    set(PLATFORM_LIBRARIES ${AVAHI_LIBRARIES})
-    set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_LINUX)
-    include_directories(${AVAHI_INCLUDE_DIRS})
-    link_directories(${AVAHI_LIBRARY_DIRS})
-elseif(WARPDECK_PLATFORM_WINDOWS)
+# Platform-specific dependencies for mjansson/mdns
+if(WARPDECK_PLATFORM_WINDOWS)
     # Windows socket libraries for mjansson/mdns
     set(PLATFORM_LIBRARIES ws2_32 iphlpapi)
     set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_WINDOWS)
+else()
+    # Unix platforms use standard socket libraries
+    set(PLATFORM_LIBRARIES)
+    if(WARPDECK_PLATFORM_MACOS)
+        set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_MACOS)
+    elseif(WARPDECK_PLATFORM_LINUX)
+        set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_LINUX)
+    endif()
 endif()
 
 # Add mjansson/mdns include directory
@@ -65,6 +62,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 set(WARPDECK_SOURCES
     src/warpdeck.cpp
     src/discovery_manager.cpp
+    src/mdns_manager.cpp
     src/api_server.cpp
     src/api_client.cpp
     src/security_manager.cpp
@@ -73,12 +71,7 @@ set(WARPDECK_SOURCES
     src/logger.cpp
 )
 
-# Platform-specific source files
-if(WARPDECK_PLATFORM_MACOS)
-    list(APPEND WARPDECK_SOURCES src/discovery_manager_macos.cpp)
-elseif(WARPDECK_PLATFORM_LINUX)
-    list(APPEND WARPDECK_SOURCES src/discovery_manager_linux.cpp)
-endif()
+# All platforms now use unified mDNS implementation
 
 # Create both static and shared libraries
 add_library(warpdeck STATIC ${WARPDECK_SOURCES})
