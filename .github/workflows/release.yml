@@ -135,145 +135,146 @@ jobs:
           WarpDeck-macOS.dmg
           warpdeck-cli/build/warpdeck
 
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup Flutter with cache
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: ${{ env.FLUTTER_VERSION }}
-        channel: 'stable'
-        cache: true
-
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
-        
-    - name: Cache vcpkg packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          C:\vcpkg\installed
-          ${{ env.VCPKG_ROOT }}\packages
-        key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/CMakeLists.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-vcpkg-
-
-    - name: Install C++ dependencies
-      run: |
-        & "$env:VCPKG_ROOT\vcpkg.exe" install boost-asio openssl nlohmann-json
-
-    - name: Build libwarpdeck
-      run: |
-        cd libwarpdeck
-        if (Test-Path build) { Remove-Item -Recurse -Force build }
-        mkdir build
-        cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
-        cmake --build . --config Release
-        cd ..\..
-
-    - name: Build CLI
-      run: |
-        cd warpdeck-cli
-        if (Test-Path build) { Remove-Item -Recurse -Force build }
-        mkdir build
-        cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
-        cmake --build . --config Release
-        cd ..\..
-
-    - name: Build Flutter GUI
-      run: |
-        cd warpdeck-flutter/warpdeck_gui
-        flutter pub get
-        dart run build_runner build --delete-conflicting-outputs
-        flutter build windows --release
-
-    - name: Fix Windows dependencies
-      run: |
-        cd warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
-        Write-Host "📦 Copying libwarpdeck.dll to Flutter bundle..."
-        Write-Host "📍 Current directory: $(Get-Location)"
-        
-        # Find the built library
-        $BUILD_DIR = "..\..\..\..\..\..\libwarpdeck\build"
-        Write-Host "🔍 Contents of libwarpdeck build directory:"
-        if (Test-Path $BUILD_DIR) {
-          Get-ChildItem $BUILD_DIR -Recurse | Where-Object { $_.Name -like "*warpdeck*" }
-        } else {
-          Write-Host "  libwarpdeck/build directory not found"
-        }
-        
-        $POSSIBLE_LIBS = @(
-          "$BUILD_DIR\Release\warpdeck.dll",
-          "$BUILD_DIR\Release\libwarpdeck.dll",
-          "$BUILD_DIR\warpdeck.dll",
-          "$BUILD_DIR\libwarpdeck.dll"
-        )
-        
-        $FOUND_LIB = ""
-        foreach ($lib_path in $POSSIBLE_LIBS) {
-          if (Test-Path $lib_path) {
-            $FOUND_LIB = $lib_path
-            Write-Host "  ✅ Found library at: $lib_path"
-            break
-          } else {
-            Write-Host "  ❌ Not found: $lib_path"
-          }
-        }
-        
-        if ($FOUND_LIB -ne "") {
-          Write-Host "  ✅ Copying $(Split-Path $FOUND_LIB -Leaf) to Flutter bundle"
-          Copy-Item $FOUND_LIB .\warpdeck.dll
-          Write-Host "  ✅ Library copied successfully"
-          Get-Item .\warpdeck.dll
-        } else {
-          Write-Host "  ❌ ERROR: No libwarpdeck library found!"
-          exit 1
-        }
-
-    - name: Create Windows ZIP package
-      run: |
-        cd warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
-        
-        # Create package directory
-        mkdir WarpDeck-Windows
-        
-        # Copy all application files
-        Copy-Item * WarpDeck-Windows\ -Recurse -Exclude WarpDeck-Windows
-        
-        # Create ZIP archive
-        Compress-Archive -Path WarpDeck-Windows\* -DestinationPath WarpDeck-Windows.zip
-        
-        # Move ZIP to workspace root
-        Write-Host "📍 Current directory: $(Get-Location)"
-        Write-Host "📁 Files before move:"
-        Get-Item WarpDeck-Windows.zip
-        
-        # Calculate path to workspace root from current location
-        # We're in: warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
-        # We need to go up 7 levels to get to workspace root
-        Move-Item WarpDeck-Windows.zip ..\..\..\..\..\..\..
-        Write-Host "✅ Windows package moved to workspace root"
-        cd ..\..\..\..\..\..\..
-        Write-Host "📍 Workspace root directory: $(Get-Location)"
-        Write-Host "📁 Windows package at workspace root:"
-        Get-Item WarpDeck-Windows.zip
-
-    - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: warpdeck-windows
-        path: |
-          WarpDeck-Windows.zip
-          warpdeck-cli/build/Release/warpdeck.exe
+  # Windows build temporarily disabled - will be re-enabled in the future
+  # build-windows:
+  #   name: Build Windows
+  #   runs-on: windows-latest
+  #   
+  #   steps:
+  #   - name: Checkout repository
+  #     uses: actions/checkout@v4
+  # 
+  #   - name: Setup Flutter with cache
+  #     uses: subosito/flutter-action@v2
+  #     with:
+  #       flutter-version: ${{ env.FLUTTER_VERSION }}
+  #       channel: 'stable'
+  #       cache: true
+  # 
+  #   - name: Setup vcpkg
+  #     uses: lukka/run-vcpkg@v11
+  #     with:
+  #       vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+  #       
+  #   - name: Cache vcpkg packages
+  #     uses: actions/cache@v4
+  #     with:
+  #       path: |
+  #         C:\vcpkg\installed
+  #         ${{ env.VCPKG_ROOT }}\packages
+  #       key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/CMakeLists.txt') }}
+  #       restore-keys: |
+  #         ${{ runner.os }}-vcpkg-
+  # 
+  #   - name: Install C++ dependencies
+  #     run: |
+  #       & "$env:VCPKG_ROOT\vcpkg.exe" install boost-asio openssl nlohmann-json
+  # 
+  #   - name: Build libwarpdeck
+  #     run: |
+  #       cd libwarpdeck
+  #       if (Test-Path build) { Remove-Item -Recurse -Force build }
+  #       mkdir build
+  #       cd build
+  #       cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+  #       cmake --build . --config Release
+  #       cd ..\..
+  # 
+  #   - name: Build CLI
+  #     run: |
+  #       cd warpdeck-cli
+  #       if (Test-Path build) { Remove-Item -Recurse -Force build }
+  #       mkdir build
+  #       cd build
+  #       cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ..
+  #       cmake --build . --config Release
+  #       cd ..\..
+  # 
+  #   - name: Build Flutter GUI
+  #     run: |
+  #       cd warpdeck-flutter/warpdeck_gui
+  #       flutter pub get
+  #       dart run build_runner build --delete-conflicting-outputs
+  #       flutter build windows --release
+  # 
+  #   - name: Fix Windows dependencies
+  #     run: |
+  #       cd warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
+  #       Write-Host "📦 Copying libwarpdeck.dll to Flutter bundle..."
+  #       Write-Host "📍 Current directory: $(Get-Location)"
+  #       
+  #       # Find the built library
+  #       $BUILD_DIR = "..\..\..\..\..\..\libwarpdeck\build"
+  #       Write-Host "🔍 Contents of libwarpdeck build directory:"
+  #       if (Test-Path $BUILD_DIR) {
+  #         Get-ChildItem $BUILD_DIR -Recurse | Where-Object { $_.Name -like "*warpdeck*" }
+  #       } else {
+  #         Write-Host "  libwarpdeck/build directory not found"
+  #       }
+  #       
+  #       $POSSIBLE_LIBS = @(
+  #         "$BUILD_DIR\Release\warpdeck.dll",
+  #         "$BUILD_DIR\Release\libwarpdeck.dll",
+  #         "$BUILD_DIR\warpdeck.dll",
+  #         "$BUILD_DIR\libwarpdeck.dll"
+  #       )
+  #       
+  #       $FOUND_LIB = ""
+  #       foreach ($lib_path in $POSSIBLE_LIBS) {
+  #         if (Test-Path $lib_path) {
+  #           $FOUND_LIB = $lib_path
+  #           Write-Host "  ✅ Found library at: $lib_path"
+  #           break
+  #         } else {
+  #           Write-Host "  ❌ Not found: $lib_path"
+  #         }
+  #       }
+  #       
+  #       if ($FOUND_LIB -ne "") {
+  #         Write-Host "  ✅ Copying $(Split-Path $FOUND_LIB -Leaf) to Flutter bundle"
+  #         Copy-Item $FOUND_LIB .\warpdeck.dll
+  #         Write-Host "  ✅ Library copied successfully"
+  #         Get-Item .\warpdeck.dll
+  #       } else {
+  #         Write-Host "  ❌ ERROR: No libwarpdeck library found!"
+  #         exit 1
+  #       }
+  # 
+  #   - name: Create Windows ZIP package
+  #     run: |
+  #       cd warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
+  #       
+  #       # Create package directory
+  #       mkdir WarpDeck-Windows
+  #       
+  #       # Copy all application files
+  #       Copy-Item * WarpDeck-Windows\ -Recurse -Exclude WarpDeck-Windows
+  #       
+  #       # Create ZIP archive
+  #       Compress-Archive -Path WarpDeck-Windows\* -DestinationPath WarpDeck-Windows.zip
+  #       
+  #       # Move ZIP to workspace root
+  #       Write-Host "📍 Current directory: $(Get-Location)"
+  #       Write-Host "📁 Files before move:"
+  #       Get-Item WarpDeck-Windows.zip
+  #       
+  #       # Calculate path to workspace root from current location
+  #       # We're in: warpdeck-flutter/warpdeck_gui/build/windows/x64/runner/Release
+  #       # We need to go up 7 levels to get to workspace root
+  #       Move-Item WarpDeck-Windows.zip ..\..\..\..\..\..\..
+  #       Write-Host "✅ Windows package moved to workspace root"
+  #       cd ..\..\..\..\..\..\..
+  #       Write-Host "📍 Workspace root directory: $(Get-Location)"
+  #       Write-Host "📁 Windows package at workspace root:"
+  #       Get-Item WarpDeck-Windows.zip
+  # 
+  #   - name: Upload Windows artifacts
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: warpdeck-windows
+  #       path: |
+  #         WarpDeck-Windows.zip
+  #         warpdeck-cli/build/Release/warpdeck.exe
 
   build-linux:
     name: Build Linux
@@ -626,7 +627,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: [build-macos, build-windows, build-linux]
+    needs: [build-macos, build-linux]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
@@ -640,11 +641,12 @@ jobs:
         name: warpdeck-macos
         path: ./artifacts/macos
 
-    - name: Download Windows artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: warpdeck-windows
-        path: ./artifacts/windows
+    # Windows artifacts temporarily disabled
+    # - name: Download Windows artifacts
+    #   uses: actions/download-artifact@v4
+    #   with:
+    #     name: warpdeck-windows
+    #     path: ./artifacts/windows
 
     - name: Download Linux artifacts
       uses: actions/download-artifact@v4
@@ -656,7 +658,8 @@ jobs:
       run: |
         # Copy CLI binaries with correct names for release
         cp ./artifacts/macos/warpdeck-cli/build/warpdeck ./artifacts/macos/warpdeck-cli-macos
-        cp ./artifacts/windows/warpdeck-cli/build/Release/warpdeck.exe ./artifacts/windows/warpdeck-cli-windows.exe
+        # Windows CLI temporarily disabled
+        # cp ./artifacts/windows/warpdeck-cli/build/Release/warpdeck.exe ./artifacts/windows/warpdeck-cli-windows.exe
         cp ./artifacts/linux/warpdeck-cli/build/warpdeck ./artifacts/linux/warpdeck-cli-linux
 
     - name: Generate release tag
@@ -683,14 +686,16 @@ jobs:
           | Platform | Download | Size | Format |
           |----------|----------|------|--------|
           | **macOS** | [WarpDeck-macOS.dmg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck-macOS.dmg) | ~25 MB | Universal Binary |
-          | **Windows** | [WarpDeck-Windows.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck-Windows.zip) | ~35 MB | Portable |
           | **Linux** | [WarpDeck.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck.AppImage) | ~45 MB | Portable |
           | **Steam Deck** | [WarpDeck.AppImage](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck.AppImage) | ~45 MB | Optimized |
           
+          > **Note:** Windows support is temporarily disabled and will return in a future release.
+          
           ### 🔧 CLI Tools
           - macOS CLI: [warpdeck-cli-macos](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/warpdeck-cli-macos)
-          - Windows CLI: [warpdeck-cli-windows.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/warpdeck-cli-windows.exe)
           - Linux CLI: [warpdeck-cli-linux](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/warpdeck-cli-linux)
+          
+          > **Note:** Windows CLI is temporarily disabled and will return in a future release.
           
           ### ✨ What's Included
           - 🔒 Privacy-first peer-to-peer file sharing
@@ -709,8 +714,7 @@ jobs:
           # macOS
           curl -L -o WarpDeck.dmg https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck-macOS.dmg
           
-          # Windows (PowerShell)
-          Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck-Windows.zip" -OutFile "WarpDeck-Windows.zip"
+          # Windows support temporarily disabled
           
           # Linux/Steam Deck
           wget https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/WarpDeck.AppImage
@@ -720,10 +724,8 @@ jobs:
         prerelease: false
         files: |
           ./artifacts/macos/WarpDeck-macOS.dmg
-          ./artifacts/windows/WarpDeck-Windows.zip
           ./artifacts/linux/WarpDeck.AppImage
           ./artifacts/macos/warpdeck-cli-macos
-          ./artifacts/windows/warpdeck-cli-windows.exe
           ./artifacts/linux/warpdeck-cli-linux
 
     - name: Update latest release
