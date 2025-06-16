@@ -1,171 +1,110 @@
-name: Build
+name: Build and Test
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ "main", "develop" ]
 
 env:
   FLUTTER_VERSION: '3.22.2'
+  VCPKG_GIT_COMMIT_ID: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
 
 jobs:
-  build-libwarpdeck:
-    name: Build libwarpdeck
+  build-and-test:
+    name: Build and Test on Ubuntu
     runs-on: ubuntu-22.04
-    
+
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Cache system dependencies
-      uses: actions/cache@v4
-      with:
-        path: /var/cache/apt
-        key: ${{ runner.os }}-apt-simple-${{ hashFiles('**/build.yml') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-simple-
-          ${{ runner.os }}-apt-
+      - name: Cache system dependencies
+        uses: actions/cache@v4
+        id: apt-cache
+        with:
+          path: /var/cache/apt
+          key: ${{ runner.os }}-apt-deps-v2-${{ hashFiles('**/build.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-deps-v2-
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          cmake \
-          build-essential \
-          pkg-config \
-          libssl-dev \
-          libavahi-client-dev
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libavahi-client-dev \
+            libgtk-3-dev \
+            ninja-build \
+            clang \
+            libayatana-appindicator3-dev
 
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: ${{ env.VCPKG_GIT_COMMIT_ID }}
 
-    - name: Cache vcpkg
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ env.VCPKG_ROOT }}
-          ~/.cache/vcpkg
-        key: ${{ runner.os }}-vcpkg-libwarpdeck-v3
-        restore-keys: |
-          ${{ runner.os }}-vcpkg-libwarpdeck-
-          ${{ runner.os }}-vcpkg-
+      - name: Cache vcpkg dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VCPKG_ROOT }}/installed/
+          key: ${{ runner.os }}-vcpkg-deps-v4-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-deps-v4-
 
-    - name: Install dependencies with vcpkg
-      run: |
-        $VCPKG_ROOT/vcpkg install boost-asio openssl nlohmann-json
+      - name: Install dependencies with vcpkg
+        run: |
+          $VCPKG_ROOT/vcpkg install boost-asio openssl nlohmann-json
 
-    - name: Cache CMake build
-      uses: actions/cache@v4
-      with:
-        path: libwarpdeck/build
-        key: ${{ runner.os }}-cmake-libwarpdeck-${{ hashFiles('libwarpdeck/**') }}
-        restore-keys: |
-          ${{ runner.os }}-cmake-libwarpdeck-
+      - name: Cache libwarpdeck build
+        uses: actions/cache@v4
+        with:
+          path: libwarpdeck/build
+          key: ${{ runner.os }}-libwarpdeck-build-v2-${{ hashFiles('libwarpdeck/**') }}
+          restore-keys: |
+            ${{ runner.os }}-libwarpdeck-build-v2-
 
-    - name: Build libwarpdeck
-      run: |
-        cd libwarpdeck
-        mkdir -p build && cd build
-        cmake -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-              ..
-        make -j$(nproc)
+      - name: Build libwarpdeck
+        id: build_lib
+        run: |
+          cd libwarpdeck
+          mkdir -p build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+                ..
+          make -j$(nproc)
+          echo "LIB_PATH=$(pwd)" >> $GITHUB_ENV
 
-  build-flutter:
-    name: Build Flutter GUI
-    runs-on: ubuntu-22.04
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Upload libwarpdeck artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libwarpdeck.so
+          path: ${{ env.LIB_PATH }}/libwarpdeck.so
 
-    - name: Cache system dependencies
-      uses: actions/cache@v4
-      with:
-        path: /var/cache/apt
-        key: ${{ runner.os }}-apt-flutter-${{ hashFiles('**/build.yml') }}
-        restore-keys: |
-          ${{ runner.os }}-apt-flutter-
-          ${{ runner.os }}-apt-
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          cmake \
-          build-essential \
-          pkg-config \
-          libssl-dev \
-          libavahi-client-dev \
-          libgtk-3-dev \
-          ninja-build \
-          clang \
-          libayatana-appindicator3-dev
-
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: ${{ env.FLUTTER_VERSION }}
-        channel: 'stable'
-
-    - name: Cache Flutter
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.pub-cache
-          ${{ env.FLUTTER_HOME }}/.pub-cache
-        key: ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
-          ${{ runner.os }}-flutter-
-
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
-
-    - name: Cache vcpkg
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ env.VCPKG_ROOT }}
-          ~/.cache/vcpkg
-        key: ${{ runner.os }}-vcpkg-flutter-v3
-        restore-keys: |
-          ${{ runner.os }}-vcpkg-flutter-
-          ${{ runner.os }}-vcpkg-
-
-    - name: Install dependencies with vcpkg
-      run: |
-        $VCPKG_ROOT/vcpkg install boost-asio openssl nlohmann-json
-
-    - name: Cache CMake build
-      uses: actions/cache@v4
-      with:
-        path: libwarpdeck/build
-        key: ${{ runner.os }}-cmake-flutter-${{ hashFiles('libwarpdeck/**') }}
-        restore-keys: |
-          ${{ runner.os }}-cmake-flutter-
-
-    - name: Build libwarpdeck
-      run: |
-        cd libwarpdeck
-        mkdir -p build && cd build
-        cmake -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-              ..
-        make -j$(nproc)
-
-    - name: Build Flutter app
-      run: |
-        cd warpdeck-flutter/warpdeck_gui
-        flutter pub get
-        dart analyze
-        dart run build_runner build --delete-conflicting-outputs
-        flutter build linux --release
+      - name: Build Flutter app
+        run: |
+          cd warpdeck-flutter/warpdeck_gui
+          
+          # Ensure the native library is available for the build
+          # The location should match where the Flutter build process expects it
+          # This might need adjustment based on your project structure
+          mkdir -p "linux/lib"
+          cp "${{ env.LIB_PATH }}/libwarpdeck.so" "linux/lib/"
+          
+          flutter pub get
+          dart analyze
+          dart run build_runner build --delete-conflicting-outputs
+          flutter build linux --release
 
   # Windows build temporarily disabled - will be re-enabled in the future
   # build-windows:
