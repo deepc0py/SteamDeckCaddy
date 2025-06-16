@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
+import 'network_diagnostic_service.dart';
+
 abstract class DebuggableService {
   String get serviceName;
   String get serviceEndpoint;
@@ -261,11 +263,16 @@ class DebugService extends ChangeNotifier {
   final Map<String, HealthCheckResult> _lastResults = {};
   ConnectivityInfo? _connectivityInfo;
   bool _isRunningHealthChecks = false;
+  NetworkDiagnosticService? _networkDiagnosticService;
 
   List<DebuggableService> get services => List.unmodifiable(_services);
   Map<String, HealthCheckResult> get lastResults => Map.unmodifiable(_lastResults);
   ConnectivityInfo? get connectivityInfo => _connectivityInfo;
   bool get isRunningHealthChecks => _isRunningHealthChecks;
+
+  void setNetworkDiagnosticService(NetworkDiagnosticService service) {
+    _networkDiagnosticService = service;
+  }
 
   void registerService(DebuggableService service) {
     if (!_services.any((s) => s.serviceName == service.serviceName)) {
@@ -426,6 +433,12 @@ class DebugService extends ChangeNotifier {
         buffer.writeln('  Status: NOT CHECKED');
       }
       buffer.writeln();
+    }
+
+    if (_networkDiagnosticService != null && _networkDiagnosticService!.lastDiagnostics.isNotEmpty) {
+      buffer.writeln('=' * 50);
+      buffer.writeln();
+      buffer.write(_networkDiagnosticService!.generateDiagnosticReport());
     }
 
     return buffer.toString();

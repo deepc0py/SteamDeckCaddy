@@ -7,22 +7,26 @@ import '../services/debug_service.dart';
 import '../services/warpdeck_service.dart';
 import '../services/network_diagnostic_service.dart';
 
+final networkDiagnosticServiceProvider =
+    ChangeNotifierProvider<NetworkDiagnosticService>((ref) {
+  final service = NetworkDiagnosticService();
+  service.setWarpDeckService(ref.read(warpDeckServiceProvider.notifier));
+  return service;
+});
+
 final debugServiceProvider = ChangeNotifierProvider<DebugService>((ref) {
   final debugService = DebugService();
-  
-  // Register services
   final warpDeckState = ref.watch(warpDeckServiceProvider);
+  final networkDiagnosticService = ref.watch(networkDiagnosticServiceProvider);
+
+  // Register services
   debugService.registerService(WarpDeckHealthService(port: warpDeckState.currentPort));
   debugService.registerService(UpdateHealthService());
   
-  return debugService;
-});
+  // Provide the network diagnostic service to the debug service for unified logging
+  debugService.setNetworkDiagnosticService(networkDiagnosticService);
 
-final networkDiagnosticServiceProvider = ChangeNotifierProvider<NetworkDiagnosticService>((ref) {
-  final service = NetworkDiagnosticService();
-  final warpDeckState = ref.watch(warpDeckServiceProvider);
-  service.setWarpDeckService(ref.read(warpDeckServiceProvider.notifier));
-  return service;
+  return debugService;
 });
 
 class DebugScreen extends ConsumerStatefulWidget {
