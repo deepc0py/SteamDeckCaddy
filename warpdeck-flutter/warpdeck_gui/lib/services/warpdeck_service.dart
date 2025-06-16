@@ -315,6 +315,41 @@ class WarpDeckService extends StateNotifier<WarpDeckState> {
       // Ignore errors saving config
     }
   }
+
+  // Debug methods for MdnsManager integration
+  Map<String, dynamic>? getDiscoveryStatus() {
+    if (_handle == nullptr) return null;
+    
+    try {
+      final statusJson = WarpDeckFFI.instance.getDiscoveryStatus(_handle!);
+      if (statusJson == null) return null;
+      return jsonDecode(statusJson) as Map<String, dynamic>;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic>? getDiscoveredPeersDebugInfo() {
+    if (_handle == nullptr) return null;
+    
+    try {
+      final peersJson = WarpDeckFFI.instance.getDiscoveredPeers(_handle!);
+      if (peersJson == null) return null;
+      return jsonDecode(peersJson) as Map<String, dynamic>;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  String? getMdnsDebugInfo() {
+    if (_handle == nullptr) return null;
+    
+    try {
+      return WarpDeckFFI.instance.getMdnsDebugInfo(_handle!);
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
 enum WarpDeckStatus {

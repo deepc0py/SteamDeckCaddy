@@ -140,4 +140,8 @@ void DiscoveryManager::on_peer_lost(const std::string& device_id) {
     Logger::instance().info("DiscoveryManager", "Peer lost: " + device_id);
 }
 
+const MdnsManager* DiscoveryManager::get_mdns_manager() const {
+    return mdns_manager_.get();
+}
+
 } // namespace warpdeck

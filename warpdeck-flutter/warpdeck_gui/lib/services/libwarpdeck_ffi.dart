@@ -50,6 +50,18 @@ typedef WarpDeckInitiateTransferDart = void Function(Pointer<WarpDeckHandle> han
 typedef WarpDeckRespondToTransferNative = Void Function(Pointer<WarpDeckHandle> handle, Pointer<Utf8> transferId, Bool accepted);
 typedef WarpDeckRespondToTransferDart = void Function(Pointer<WarpDeckHandle> handle, Pointer<Utf8> transferId, bool accepted);
 
+typedef WarpDeckGetDiscoveryStatusNative = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+typedef WarpDeckGetDiscoveryStatusDart = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+
+typedef WarpDeckGetDiscoveredPeersNative = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+typedef WarpDeckGetDiscoveredPeersDart = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+
+typedef WarpDeckGetMdnsDebugInfoNative = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+typedef WarpDeckGetMdnsDebugInfoDart = Pointer<Utf8> Function(Pointer<WarpDeckHandle> handle);
+
+typedef WarpDeckFreeStringNative = Void Function(Pointer<Utf8> str);
+typedef WarpDeckFreeStringDart = void Function(Pointer<Utf8> str);
+
 class WarpDeckFFI {
   static WarpDeckFFI? _instance;
   static WarpDeckFFI get instance => _instance ??= WarpDeckFFI._();
@@ -61,6 +73,10 @@ class WarpDeckFFI {
   late final WarpDeckDestroyDart warpdeckDestroy;
   late final WarpDeckInitiateTransferDart warpdeckInitiateTransfer;
   late final WarpDeckRespondToTransferDart warpdeckRespondToTransfer;
+  late final WarpDeckGetDiscoveryStatusDart warpdeckGetDiscoveryStatus;
+  late final WarpDeckGetDiscoveredPeersDart warpdeckGetDiscoveredPeers;
+  late final WarpDeckGetMdnsDebugInfoDart warpdeckGetMdnsDebugInfo;
+  late final WarpDeckFreeStringDart warpdeckFreeString;
 
   WarpDeckFFI._() {
     _loadLibrary();
@@ -159,8 +175,38 @@ class WarpDeckFFI {
       warpdeckDestroy = _lib.lookupFunction<WarpDeckDestroyNative, WarpDeckDestroyDart>('warpdeck_destroy');
       warpdeckInitiateTransfer = _lib.lookupFunction<WarpDeckInitiateTransferNative, WarpDeckInitiateTransferDart>('warpdeck_initiate_transfer');
       warpdeckRespondToTransfer = _lib.lookupFunction<WarpDeckRespondToTransferNative, WarpDeckRespondToTransferDart>('warpdeck_respond_to_transfer');
+      warpdeckGetDiscoveryStatus = _lib.lookupFunction<WarpDeckGetDiscoveryStatusNative, WarpDeckGetDiscoveryStatusDart>('warpdeck_get_discovery_status');
+      warpdeckGetDiscoveredPeers = _lib.lookupFunction<WarpDeckGetDiscoveredPeersNative, WarpDeckGetDiscoveredPeersDart>('warpdeck_get_discovered_peers');
+      warpdeckGetMdnsDebugInfo = _lib.lookupFunction<WarpDeckGetMdnsDebugInfoNative, WarpDeckGetMdnsDebugInfoDart>('warpdeck_get_mdns_debug_info');
+      warpdeckFreeString = _lib.lookupFunction<WarpDeckFreeStringNative, WarpDeckFreeStringDart>('warpdeck_free_string');
     } catch (e) {
       rethrow;
     }
+  }
+  
+  // Helper methods to safely call and manage strings returned by the native library
+  String? safeGetString(Pointer<Utf8> Function() nativeCall) {
+    try {
+      final ptr = nativeCall();
+      if (ptr == nullptr) return null;
+      
+      final result = ptr.toDartString();
+      warpdeckFreeString(ptr);
+      return result;
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  String? getDiscoveryStatus(Pointer<WarpDeckHandle> handle) {
+    return safeGetString(() => warpdeckGetDiscoveryStatus(handle));
+  }
+  
+  String? getDiscoveredPeers(Pointer<WarpDeckHandle> handle) {
+    return safeGetString(() => warpdeckGetDiscoveredPeers(handle));
+  }
+  
+  String? getMdnsDebugInfo(Pointer<WarpDeckHandle> handle) {
+    return safeGetString(() => warpdeckGetMdnsDebugInfo(handle));
   }
 }
