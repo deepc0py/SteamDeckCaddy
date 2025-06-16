@@ -10,6 +10,8 @@ if(APPLE)
     set(WARPDECK_PLATFORM_MACOS ON)
 elseif(UNIX AND NOT APPLE)
     set(WARPDECK_PLATFORM_LINUX ON)
+elseif(WIN32)
+    set(WARPDECK_PLATFORM_WINDOWS ON)
 else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
@@ -31,7 +33,14 @@ elseif(WARPDECK_PLATFORM_LINUX)
     set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_LINUX)
     include_directories(${AVAHI_INCLUDE_DIRS})
     link_directories(${AVAHI_LIBRARY_DIRS})
+elseif(WARPDECK_PLATFORM_WINDOWS)
+    # Windows socket libraries for mjansson/mdns
+    set(PLATFORM_LIBRARIES ws2_32 iphlpapi)
+    set(PLATFORM_DEFINITIONS -DWARPDECK_PLATFORM_WINDOWS)
 endif()
+
+# Add mjansson/mdns include directory
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/mjansson_mdns)
 
 # Add third-party dependencies
 include(FetchContent)
