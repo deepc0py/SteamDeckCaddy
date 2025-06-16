@@ -167,35 +167,36 @@ jobs:
         dart run build_runner build --delete-conflicting-outputs
         flutter build linux --release
 
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    - name: Setup Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: ${{ env.FLUTTER_VERSION }}
-        channel: 'stable'
-
-    - name: Cache Flutter
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~\AppData\Local\Pub\Cache
-          ${{ env.FLUTTER_HOME }}\.pub-cache
-        key: ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
-          ${{ runner.os }}-flutter-
-
-    - name: Build Flutter app
-      run: |
-        cd warpdeck-flutter/warpdeck_gui
-        flutter pub get
-        dart analyze
-        dart run build_runner build --delete-conflicting-outputs
-        flutter build windows --release
+  # Windows build temporarily disabled - will be re-enabled in the future
+  # build-windows:
+  #   name: Build Windows
+  #   runs-on: windows-latest
+  #   
+  #   steps:
+  #   - name: Checkout repository
+  #     uses: actions/checkout@v4
+  # 
+  #   - name: Setup Flutter
+  #     uses: subosito/flutter-action@v2
+  #     with:
+  #       flutter-version: ${{ env.FLUTTER_VERSION }}
+  #       channel: 'stable'
+  # 
+  #   - name: Cache Flutter
+  #     uses: actions/cache@v4
+  #     with:
+  #       path: |
+  #         ~\AppData\Local\Pub\Cache
+  #         ${{ env.FLUTTER_HOME }}\.pub-cache
+  #       key: ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+  #       restore-keys: |
+  #         ${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
+  #         ${{ runner.os }}-flutter-
+  # 
+  #   - name: Build Flutter app
+  #     run: |
+  #       cd warpdeck-flutter/warpdeck_gui
+  #       flutter pub get
+  #       dart analyze
+  #       dart run build_runner build --delete-conflicting-outputs
+  #       flutter build windows --release
