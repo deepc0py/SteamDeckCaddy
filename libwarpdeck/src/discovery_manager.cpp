@@ -1,4 +1,5 @@
 #include "discovery_manager.h"
+#include "mdns_manager.h"
 #include "utils.h"
 #include "logger.h"
 #include <thread>
@@ -6,10 +7,9 @@
 
 namespace warpdeck {
 
-// Implementation is now defined in the header file
 
 DiscoveryManager::DiscoveryManager() : running_(false) {
-    // Platform-specific implementation will be created when needed
+    mdns_manager_ = std::make_unique<MdnsManager>();
 }
 
 DiscoveryManager::~DiscoveryManager() {
@@ -25,18 +25,24 @@ bool DiscoveryManager::start(const std::string& device_name, const std::string& 
     // Set debug logging for discovery components
     Logger::instance().set_log_level(LogLevel::DEBUG);
     
-    // Create platform-specific implementation if not already created
-    if (!impl_) {
-        create_platform_impl();
-    }
-    
     device_name_ = device_name;
     device_id_ = device_id;
     platform_ = platform;
     port_ = port;
     fingerprint_ = fingerprint;
     
-    if (!impl_ || !impl_->start_discovery(device_name, device_id, platform, port, fingerprint)) {
+    // Start mDNS service publishing
+    if (!mdns_manager_->publish_service(device_id, fingerprint, port)) {
+        Logger::instance().error("DiscoveryManager", "Failed to start mDNS service publishing");
+        return false;
+    }
+    
+    // Start mDNS service discovery
+    if (!mdns_manager_->start_discovery(
+            [this](const PeerInfo& peer) { this->on_peer_discovered(peer); },
+            [this](const std::string& device_id) { this->on_peer_lost(device_id); })) {
+        Logger::instance().error("DiscoveryManager", "Failed to start mDNS service discovery");
+        mdns_manager_->stop_publishing();
         return false;
     }
     
@@ -46,7 +52,6 @@ bool DiscoveryManager::start(const std::string& device_name, const std::string& 
     return true;
 }
 
-// create_platform_impl() is implemented in platform-specific files
 
 void DiscoveryManager::stop() {
     if (!running_) {
@@ -55,8 +60,9 @@ void DiscoveryManager::stop() {
     
     running_ = false;
     
-    if (impl_) {
-        impl_->stop_discovery();
+    if (mdns_manager_) {
+        mdns_manager_->stop_discovery();
+        mdns_manager_->stop_publishing();
     }
     
     if (discovery_thread_.joinable()) {
@@ -69,8 +75,10 @@ void DiscoveryManager::stop() {
 
 void DiscoveryManager::set_device_name(const std::string& name) {
     device_name_ = name;
-    if (running_ && impl_) {
-        impl_->update_service_info(device_name_, device_id_, platform_, port_, fingerprint_);
+    if (running_ && mdns_manager_) {
+        // For MdnsManager, we need to restart publishing with new service info
+        mdns_manager_->stop_publishing();
+        mdns_manager_->publish_service(device_id_, fingerprint_, port_);
     }
 }
 
@@ -99,9 +107,37 @@ void DiscoveryManager::discovery_thread_func() {
 }
 
 void DiscoveryManager::update_service_registration() {
-    if (impl_) {
-        impl_->update_service_info(device_name_, device_id_, platform_, port_, fingerprint_);
+    if (mdns_manager_ && running_) {
+        // For MdnsManager, we need to restart publishing with updated service info
+        mdns_manager_->stop_publishing();
+        mdns_manager_->publish_service(device_id_, fingerprint_, port_);
     }
+}
+
+void DiscoveryManager::on_peer_discovered(const PeerInfo& peer) {
+    {
+        std::lock_guard<std::mutex> lock(peers_mutex_);
+        discovered_peers_[peer.id] = peer;
+    }
+    
+    if (peer_discovered_callback_) {
+        peer_discovered_callback_(peer);
+    }
+    
+    Logger::instance().info("DiscoveryManager", "Peer discovered: " + peer.id + " (" + peer.name + ")");
+}
+
+void DiscoveryManager::on_peer_lost(const std::string& device_id) {
+    {
+        std::lock_guard<std::mutex> lock(peers_mutex_);
+        discovered_peers_.erase(device_id);
+    }
+    
+    if (peer_lost_callback_) {
+        peer_lost_callback_(device_id);
+    }
+    
+    Logger::instance().info("DiscoveryManager", "Peer lost: " + device_id);
 }
 
 } // namespace warpdeck
