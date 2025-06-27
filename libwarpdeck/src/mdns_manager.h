@@ -125,6 +125,12 @@ private:
                              size_t name_length, size_t record_offset, 
                              size_t record_length, void* user_data);
     
+    // Process mDNS responses to discover peers
+    void process_mdns_response(int sock, const struct sockaddr* from, size_t addrlen,
+                              mdns_entry_type_t entry, uint16_t rtype, uint32_t ttl,
+                              const void* data, size_t size, size_t name_offset,
+                              size_t name_length, size_t record_offset, size_t record_length);
+    
 };
 
 } // namespace warpdeck

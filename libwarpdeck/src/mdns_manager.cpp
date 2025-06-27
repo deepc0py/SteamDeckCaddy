@@ -1,6 +1,7 @@
 #include "mdns_manager.h"
 #include "discovery_manager.h"
 #include "logger.h"
+#include "../../third_party/mjansson_mdns/mdns.h"
 
 #include <iostream>
 #include <sstream>
@@ -376,14 +377,108 @@ void MdnsManager::cleanup_sockets() {
 
 void MdnsManager::handle_mdns_query(int sock, const struct sockaddr* from, size_t addrlen,
                                     const void* buffer, size_t size) {
-    // Create a non-const buffer copy for mdns_query_recv
-    char temp_buffer[2048];
-    if (size > sizeof(temp_buffer)) {
-        Logger::instance().error("MdnsManager", "Query buffer too large");
+    // Parse mDNS packet header and records directly from buffer
+    if (size < 12) { // mDNS header is 12 bytes
         return;
     }
-    memcpy(temp_buffer, buffer, size);
-    mdns_query_recv(sock, temp_buffer, size, query_callback, this, 0);
+    
+    const uint16_t* data = static_cast<const uint16_t*>(buffer);
+    uint16_t query_id = ntohs(data[0]);
+    uint16_t flags = ntohs(data[1]);
+    uint16_t questions = ntohs(data[2]);
+    uint16_t answer_rrs = ntohs(data[3]);
+    uint16_t authority_rrs = ntohs(data[4]);
+    uint16_t additional_rrs = ntohs(data[5]);
+    
+    // Start parsing after the header
+    size_t offset = 12;
+    
+    // Parse questions (we handle these as before)
+    for (uint16_t i = 0; i < questions && offset < size; ++i) {
+        size_t question_offset = offset;
+        // Skip question name
+        if (mdns_string_skip(buffer, size, &offset) < 0) break;
+        if (offset + 4 > size) break;
+        
+        const uint16_t* question_data = reinterpret_cast<const uint16_t*>(static_cast<const char*>(buffer) + offset);
+        uint16_t rtype = ntohs(question_data[0]);
+        uint16_t rclass = ntohs(question_data[1]);
+        offset += 4;
+        
+        size_t name_length = offset - question_offset - 4;
+        query_callback(sock, from, addrlen, MDNS_ENTRYTYPE_QUESTION, query_id,
+                      rtype, rclass, 0, buffer, size, question_offset, name_length,
+                      question_offset, name_length, this);
+    }
+    
+    // Parse answer records
+    for (uint16_t i = 0; i < answer_rrs && offset < size; ++i) {
+        size_t name_offset = offset;
+        if (mdns_string_skip(buffer, size, &offset) < 0) break;
+        if (offset + 10 > size) break;
+        
+        size_t name_length = offset - name_offset;
+        const uint16_t* record_data = reinterpret_cast<const uint16_t*>(static_cast<const char*>(buffer) + offset);
+        uint16_t rtype = ntohs(record_data[0]);
+        uint16_t rclass = ntohs(record_data[1]);
+        uint32_t ttl = (static_cast<uint32_t>(ntohs(record_data[2])) << 16) | ntohs(record_data[3]);
+        uint16_t record_length = ntohs(record_data[4]);
+        offset += 10;
+        
+        size_t record_offset = offset;
+        if (offset + record_length > size) break;
+        offset += record_length;
+        
+        query_callback(sock, from, addrlen, MDNS_ENTRYTYPE_ANSWER, query_id,
+                      rtype, rclass, ttl, buffer, size, name_offset, name_length,
+                      record_offset, record_length, this);
+    }
+    
+    // Parse authority records  
+    for (uint16_t i = 0; i < authority_rrs && offset < size; ++i) {
+        size_t name_offset = offset;
+        if (mdns_string_skip(buffer, size, &offset) < 0) break;
+        if (offset + 10 > size) break;
+        
+        size_t name_length = offset - name_offset;
+        const uint16_t* record_data = reinterpret_cast<const uint16_t*>(static_cast<const char*>(buffer) + offset);
+        uint16_t rtype = ntohs(record_data[0]);
+        uint16_t rclass = ntohs(record_data[1]);
+        uint32_t ttl = (static_cast<uint32_t>(ntohs(record_data[2])) << 16) | ntohs(record_data[3]);
+        uint16_t record_length = ntohs(record_data[4]);
+        offset += 10;
+        
+        size_t record_offset = offset;
+        if (offset + record_length > size) break;
+        offset += record_length;
+        
+        query_callback(sock, from, addrlen, MDNS_ENTRYTYPE_AUTHORITY, query_id,
+                      rtype, rclass, ttl, buffer, size, name_offset, name_length,
+                      record_offset, record_length, this);
+    }
+    
+    // Parse additional records
+    for (uint16_t i = 0; i < additional_rrs && offset < size; ++i) {
+        size_t name_offset = offset;
+        if (mdns_string_skip(buffer, size, &offset) < 0) break;
+        if (offset + 10 > size) break;
+        
+        size_t name_length = offset - name_offset;
+        const uint16_t* record_data = reinterpret_cast<const uint16_t*>(static_cast<const char*>(buffer) + offset);
+        uint16_t rtype = ntohs(record_data[0]);
+        uint16_t rclass = ntohs(record_data[1]);
+        uint32_t ttl = (static_cast<uint32_t>(ntohs(record_data[2])) << 16) | ntohs(record_data[3]);
+        uint16_t record_length = ntohs(record_data[4]);
+        offset += 10;
+        
+        size_t record_offset = offset;
+        if (offset + record_length > size) break;
+        offset += record_length;
+        
+        query_callback(sock, from, addrlen, MDNS_ENTRYTYPE_ADDITIONAL, query_id,
+                      rtype, rclass, ttl, buffer, size, name_offset, name_length,
+                      record_offset, record_length, this);
+    }
 }
 
 void MdnsManager::send_discovery_query() {
@@ -456,6 +551,177 @@ void MdnsManager::handle_mdns_response(const void* buffer, size_t size,
     }
 }
 
+void MdnsManager::process_mdns_response(int sock, const struct sockaddr* from, size_t addrlen,
+                                       mdns_entry_type_t entry, uint16_t rtype, uint32_t ttl,
+                                       const void* data, size_t size, size_t name_offset,
+                                       size_t name_length, size_t record_offset, size_t record_length) {
+    // Parse mDNS responses to extract peer information
+    static std::map<std::string, PeerInfo> pending_peers; // Track partial peer information
+    static std::mutex pending_peers_mutex;
+    
+    std::string sender_address = sockaddr_to_string(from);
+    PeerInfo peer_info;
+    bool peer_complete = false;
+    
+    try {
+        char name_buffer[256];
+        mdns_string_t record_name = mdns_string_extract(data, size, &name_offset,
+                                                       name_buffer, sizeof(name_buffer));
+        std::string name_str(record_name.str, record_name.length);
+        
+        Logger::instance().debug("MdnsManager", "Processing " + std::to_string(rtype) + " record: " + name_str);
+        
+        // Initialize peer info with sender address
+        peer_info.host_address = sender_address;
+        peer_info.platform = "unknown";
+        
+        if (rtype == MDNS_RECORDTYPE_PTR) {
+            // PTR record: extract service instance name
+            char ptr_buffer[256];
+            mdns_string_t ptr_name = mdns_string_extract(data, size, &record_offset,
+                                                        ptr_buffer, sizeof(ptr_buffer));
+            std::string instance_name(ptr_name.str, ptr_name.length);
+            
+            // Extract device ID from instance name (format: deviceid._warpdeck._tcp.local.)
+            size_t dot_pos = instance_name.find('.');
+            if (dot_pos != std::string::npos) {
+                peer_info.id = instance_name.substr(0, dot_pos);
+                peer_info.name = peer_info.id; // Default name to ID
+                Logger::instance().debug("MdnsManager", "Found peer ID from PTR: " + peer_info.id);
+            }
+        }
+        else if (rtype == MDNS_RECORDTYPE_SRV) {
+            // SRV record: extract port and hostname
+            if (record_length >= 6) {
+                const uint8_t* srv_data = static_cast<const uint8_t*>(data) + record_offset;
+                uint16_t priority = (srv_data[0] << 8) | srv_data[1];
+                uint16_t weight = (srv_data[2] << 8) | srv_data[3];
+                uint16_t port = (srv_data[4] << 8) | srv_data[5];
+                
+                peer_info.port = port;
+                
+                // Extract device ID from record name
+                size_t dot_pos = name_str.find('.');
+                if (dot_pos != std::string::npos) {
+                    peer_info.id = name_str.substr(0, dot_pos);
+                }
+                
+                Logger::instance().debug("MdnsManager", "Found peer port from SRV: " + std::to_string(port));
+            }
+        }
+        else if (rtype == MDNS_RECORDTYPE_TXT) {
+            // TXT record: extract device metadata
+            if (record_length > 0) {
+                const uint8_t* txt_data = static_cast<const uint8_t*>(data) + record_offset;
+                size_t offset = 0;
+                
+                while (offset < record_length) {
+                    uint8_t len = txt_data[offset++];
+                    if (len == 0 || offset + len > record_length) break;
+                    
+                    std::string txt_entry(reinterpret_cast<const char*>(&txt_data[offset]), len);
+                    offset += len;
+                    
+                    size_t eq_pos = txt_entry.find('=');
+                    if (eq_pos != std::string::npos) {
+                        std::string key = txt_entry.substr(0, eq_pos);
+                        std::string value = txt_entry.substr(eq_pos + 1);
+                        
+                        if (key == "deviceid") {
+                            peer_info.id = value;
+                        } else if (key == "fingerprint") {
+                            peer_info.fingerprint = value;
+                        } else if (key == "name") {
+                            peer_info.name = value;
+                        } else if (key == "platform") {
+                            peer_info.platform = value;
+                        }
+                    }
+                }
+                
+                // Extract device ID from record name if not found in TXT
+                if (peer_info.id.empty()) {
+                    size_t dot_pos = name_str.find('.');
+                    if (dot_pos != std::string::npos) {
+                        peer_info.id = name_str.substr(0, dot_pos);
+                    }
+                }
+                
+                Logger::instance().debug("MdnsManager", "Found peer metadata from TXT for: " + peer_info.id);
+            }
+        }
+        
+        // Merge with existing pending peer info
+        {
+            std::lock_guard<std::mutex> lock(pending_peers_mutex);
+            
+            std::string key = peer_info.id.empty() ? sender_address : peer_info.id;
+            auto it = pending_peers.find(key);
+            
+            if (it != pending_peers.end()) {
+                // Merge information
+                PeerInfo& existing = it->second;
+                if (!peer_info.id.empty()) existing.id = peer_info.id;
+                if (!peer_info.name.empty() && peer_info.name != peer_info.id) existing.name = peer_info.name;
+                if (!peer_info.platform.empty() && peer_info.platform != "unknown") existing.platform = peer_info.platform;
+                if (!peer_info.fingerprint.empty()) existing.fingerprint = peer_info.fingerprint;
+                if (peer_info.port != 0) existing.port = peer_info.port;
+                if (!peer_info.host_address.empty()) existing.host_address = peer_info.host_address;
+                
+                peer_info = existing;
+            } else {
+                // Set defaults for missing fields
+                if (peer_info.id.empty()) peer_info.id = "peer-" + sender_address;
+                if (peer_info.name.empty()) peer_info.name = peer_info.id;
+                if (peer_info.port == 0) peer_info.port = 54321; // Default WarpDeck port
+                if (peer_info.fingerprint.empty()) peer_info.fingerprint = "unknown";
+                
+                pending_peers[key] = peer_info;
+            }
+            
+            // Check if we have enough information to consider the peer complete
+            if (!peer_info.id.empty() && peer_info.port != 0 && !peer_info.host_address.empty()) {
+                peer_complete = true;
+                pending_peers.erase(key); // Remove from pending
+            }
+        }
+        
+        // If peer info is complete, add to discovered peers
+        if (peer_complete) {
+            std::lock_guard<std::mutex> lock(peers_mutex_);
+            
+            auto now = std::chrono::steady_clock::now();
+            auto it = discovered_peers_.find(peer_info.id);
+            
+            if (it == discovered_peers_.end()) {
+                // New peer discovered
+                DiscoveredPeer discovered_peer;
+                discovered_peer.info = peer_info;
+                discovered_peer.last_seen = now;
+                discovered_peer.ttl = ttl > 0 ? ttl : 300; // Use TTL from record or default to 5 minutes
+                
+                discovered_peers_[peer_info.id] = discovered_peer;
+                
+                // Notify callback
+                if (peer_discovered_callback_) {
+                    peer_discovered_callback_(peer_info);
+                }
+                
+                Logger::instance().info("MdnsManager", "Discovered new peer: " + peer_info.id + 
+                                       " (" + peer_info.name + ") at " + peer_info.host_address + ":" + std::to_string(peer_info.port));
+            } else {
+                // Update existing peer
+                it->second.last_seen = now;
+                it->second.info = peer_info; // Update with latest info
+                Logger::instance().debug("MdnsManager", "Updated existing peer: " + peer_info.id);
+            }
+        }
+        
+    } catch (const std::exception& e) {
+        Logger::instance().error("MdnsManager", "Error processing mDNS response: " + std::string(e.what()));
+    }
+}
+
 void MdnsManager::process_peer_timeout() {
     auto now = std::chrono::steady_clock::now();
     std::vector<std::string> expired_peers;
@@ -517,6 +783,20 @@ int MdnsManager::query_callback(int sock, const struct sockaddr* from, size_t ad
         if (query_name.find("_warpdeck._tcp") != std::string::npos) {
             Logger::instance().debug("MdnsManager", "Received PTR query for _warpdeck._tcp service");
             manager->send_service_response(sock, from, addrlen, query_name, rtype);
+        }
+    }
+    else if (entry == MDNS_ENTRYTYPE_ANSWER || entry == MDNS_ENTRYTYPE_ADDITIONAL) {
+        // Handle answers and additional records from other WarpDeck devices
+        char name_buffer[256];
+        mdns_string_t name = mdns_string_extract(data, size, &name_offset,
+                                                name_buffer, sizeof(name_buffer));
+        
+        std::string record_name(name.str, name.length);
+        if (record_name.find("_warpdeck._tcp") != std::string::npos) {
+            Logger::instance().debug("MdnsManager", "Received mDNS response for _warpdeck._tcp service from " + 
+                                   manager->sockaddr_to_string(from));
+            manager->process_mdns_response(sock, from, addrlen, entry, rtype, ttl, data, size, 
+                                         name_offset, name_length, record_offset, record_length);
         }
     }
     
